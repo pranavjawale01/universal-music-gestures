@@ -4,31 +4,12 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer Border -->
+    <!-- Stylized 'S' for Sense / Pulse Wave -->
     <path
-        android:pathData="M15,15 h78 a10,10 0 0 1 10,10 v58 a10,10 0 0 1 -10,10 h-78 a10,10 0 0 1 -10,-10 v-58 a10,10 0 0 1 10,-10 z"
-        android:strokeWidth="4"
-        android:strokeColor="#FF6D00" />
-
-    <!-- Left Chevron < -->
-    <path
-        android:pathData="M35,42 L25,54 L35,66"
-        android:strokeWidth="6"
+        android:pathData="M30,54 C35,54 38,30 45,30 C52,30 56,78 63,78 C70,78 73,54 78,54"
+        android:strokeWidth="8"
         android:strokeColor="#FF6D00"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
-
-    <!-- Right Chevron > -->
-    <path
-        android:pathData="M73,42 L83,54 L73,66"
-        android:strokeWidth="6"
-        android:strokeColor="#FF6D00"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-
-    <!-- Pause Bars || -->
-    <path
-        android:fillColor="#FF6D00"
-        android:pathData="M46,38 h6 v32 h-6 z M56,38 h6 v32 h-6 z" />
 
 </vector>

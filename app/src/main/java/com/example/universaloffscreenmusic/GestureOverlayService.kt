@@ -13,9 +13,13 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import android.view.*
+import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import kotlin.math.abs
 
@@ -23,19 +27,45 @@ class GestureOverlayService : Service(), SensorEventListener {
 
     private lateinit var windowManager: WindowManager
     private lateinit var overlayView: View
+    private lateinit var magicTrailView: MagicTrailView
+    private lateinit var edgeLightingView: EdgeLightingView
+    
     private lateinit var powerManager: PowerManager
     private lateinit var sensorManager: SensorManager
     private var proximitySensor: Sensor? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private var isNextEnabled = true
+    private var isPrevEnabled = true
+    private var isPauseEnabled = true
+    private var controlMode = "LOCK_SCREEN"
+    
+    private var isEdgeEnabled = true
+    private var edgeTheme = "RAINBOW"
 
     private var isNearPocket = false
     private val touchPoints = mutableListOf<PointF>()
     private var lastTapTime = 0L
     private val DOUBLE_TAP_THRESHOLD = 300L
+    
+    private val handler = Handler(Looper.getMainLooper())
+    private val playbackMonitor = object : Runnable {
+        override fun run() {
+            if (isEdgeEnabled) {
+                if (UniversalMediaService.isMusicPlaying) {
+                    edgeLightingView.startAnimation()
+                } else {
+                    edgeLightingView.stopAnimation()
+                }
+            }
+            handler.postDelayed(this, 1000)
+        }
+    }
 
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_ON) {
-                // If screen is turned on by power button, stop the gesture overlay
+                Log.d("GestureMusic", "Screen ON detected, stopping overlay")
                 stopSelf()
             }
         }
@@ -43,6 +73,16 @@ class GestureOverlayService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("GestureMusic", "Overlay Service Created")
+        
+        val prefs = getSharedPreferences("gestures_prefs", Context.MODE_PRIVATE)
+        isNextEnabled = prefs.getBoolean("gesture_next", true)
+        isPrevEnabled = prefs.getBoolean("gesture_prev", true)
+        isPauseEnabled = prefs.getBoolean("gesture_pause", true)
+        controlMode = prefs.getString("control_mode", "LOCK_SCREEN") ?: "LOCK_SCREEN"
+        isEdgeEnabled = prefs.getBoolean("edge_lighting_enabled", true)
+        edgeTheme = prefs.getString("edge_lighting_theme", "RAINBOW") ?: "RAINBOW"
+
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         powerManager = getSystemService(POWER_SERVICE) as PowerManager
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
@@ -55,22 +95,36 @@ class GestureOverlayService : Service(), SensorEventListener {
         val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
         registerReceiver(screenStateReceiver, filter)
 
-        startForegroundService()
+        if (controlMode == "LOCK_SCREEN") {
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK or
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                        PowerManager.ON_AFTER_RELEASE,
+                "Sense:ScreenOnWake"
+            ).apply {
+                acquire(10 * 60 * 1000L)
+            }
+        }
+
+        startSenseForegroundService()
         createBlackOverlay()
+        
+        handler.post(playbackMonitor)
     }
 
-    private fun startForegroundService() {
-        val channelId = "universal_gesture_channel"
+    private fun startSenseForegroundService() {
+        val channelId = "sense_gesture_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Screen Gestures Active", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "Sense Gestures Active", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Gesture Music Active")
-            .setContentText("Screen is blacked out. Draw >, <, || (2-finger tap) or double tap to wake.")
+            .setContentTitle("Sense Active")
+            .setContentText("Intelligent gestures enabled.")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
         startForeground(1, notification)
@@ -91,13 +145,31 @@ class GestureOverlayService : Service(), SensorEventListener {
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.OPAQUE
-        ).apply { screenBrightness = 0.0f }
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply { 
+            screenBrightness = 0.01f
+            buttonBrightness = 0.0f
+        }
 
-        overlayView = View(this).apply {
-            setBackgroundColor(Color.BLACK)
-            setOnTouchListener { _, event -> handleTouch(event) }
+        val root = FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
+        
+        edgeLightingView = EdgeLightingView(this).apply {
+            setTheme(edgeTheme)
+        }
+        root.addView(edgeLightingView)
+        
+        magicTrailView = MagicTrailView(this)
+        root.addView(magicTrailView)
+
+        overlayView = root
+        overlayView.setOnTouchListener { _, event -> 
+            magicTrailView.handleTouch(event)
+            handleTouch(event) 
         }
 
         windowManager.addView(overlayView, params)
@@ -118,8 +190,7 @@ class GestureOverlayService : Service(), SensorEventListener {
                 lastTapTime = now
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                // Detected multi-touch
-                if (event.pointerCount == 2) {
+                if (event.pointerCount == 2 && isPauseEnabled) {
                     UniversalMediaService.togglePlayPause()
                 }
             }
@@ -144,18 +215,14 @@ class GestureOverlayService : Service(), SensorEventListener {
         val start = points.first()
         val end = points.last()
 
-        // Minimum swipe distance to avoid noise
         if (width < 100f && height < 100f) return
 
-        // Heuristic for '>' (Next): Starts left, moves significantly right, ends left
-        // Simple V-shape on its side
-        if (width > 150f && start.x < minX + width * 0.4f && end.x < minX + width * 0.4f && maxX > start.x + 100f) {
+        if (isNextEnabled && width > 150f && start.x < minX + width * 0.4f && end.x < minX + width * 0.4f && maxX > start.x + 100f) {
             UniversalMediaService.sendNext()
             return
         }
 
-        // Heuristic for '<' (Previous): Starts right, moves significantly left, ends right
-        if (width > 150f && start.x > maxX - width * 0.4f && end.x > maxX - width * 0.4f && minX < start.x - 100f) {
+        if (isPrevEnabled && width > 150f && start.x > maxX - width * 0.4f && end.x > maxX - width * 0.4f && minX < start.x - 100f) {
             UniversalMediaService.sendPrevious()
             return
         }
@@ -166,7 +233,7 @@ class GestureOverlayService : Service(), SensorEventListener {
             val wakeLock = powerManager.newWakeLock(
                 PowerManager.FULL_WAKE_LOCK or
                         PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                        PowerManager.ON_AFTER_RELEASE, "UniversalGestures:Wake"
+                        PowerManager.ON_AFTER_RELEASE, "Sense:Wake"
             )
             wakeLock.acquire(3000)
             wakeLock.release()
@@ -174,7 +241,7 @@ class GestureOverlayService : Service(), SensorEventListener {
             @Suppress("DEPRECATION")
             val wakeLock = powerManager.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP, "UniversalGestures:Wake"
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP, "Sense:Wake"
             )
             wakeLock.acquire(3000)
             wakeLock.release()
@@ -192,8 +259,15 @@ class GestureOverlayService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(screenStateReceiver)
+        handler.removeCallbacks(playbackMonitor)
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        try {
+            unregisterReceiver(screenStateReceiver)
+        } catch (e: Exception) { }
         sensorManager.unregisterListener(this)
+        
         if (::overlayView.isInitialized) {
             try {
                 windowManager.removeView(overlayView)

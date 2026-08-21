@@ -1,0 +1,8 @@
+<resources>
+    <color name="primary">#FF6D00</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="surface">#121212</color>
+    <color name="onSurface">#E1E1E1</color>
+    <color name="onSurfaceVariant">#9E9E9E</color>
+    <color name="cardBackground">#1E1E1E</color>
+</resources>
