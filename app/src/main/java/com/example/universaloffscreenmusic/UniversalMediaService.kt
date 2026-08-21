@@ -1,22 +1,30 @@
 package com.example.universaloffscreenmusic
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.util.Log
+import androidx.core.app.NotificationCompat
 
 class UniversalMediaService : NotificationListenerService() {
     private var sessionManager: MediaSessionManager? = null
     private var isMasterEnabled = true
-    private var isAutoActivateEnabled = false
+    private var isAutoActivateEnabled = true
     private val handler = Handler(Looper.getMainLooper())
 
     private val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener { sessions ->
@@ -29,21 +37,43 @@ class UniversalMediaService : NotificationListenerService() {
         }
     }
 
+    private var lastScreenOffTime = 0L
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.d("GestureMusic", "Screen Receiver event: ${intent.action}")
             if (intent.action == Intent.ACTION_SCREEN_OFF && isMasterEnabled && isAutoActivateEnabled) {
-                Log.d("GestureMusic", "Screen OFF, preparing lockscreen gestures...")
-                handler.postDelayed({
+                val now = System.currentTimeMillis()
+
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                val isAudioActive = isMusicPlaying || (audioManager?.isMusicActive == true)
+                val isCallActive = audioManager?.mode == AudioManager.MODE_IN_CALL ||
+                                   audioManager?.mode == AudioManager.MODE_RINGTONE ||
+                                   audioManager?.mode == AudioManager.MODE_IN_COMMUNICATION
+
+                Log.d("GestureMusic", "Screen off detected. isAudioActive=$isAudioActive, isCallActive=$isCallActive")
+
+                // Auto-launch when enabled and no phone call is ringing/active
+                if (isMasterEnabled && isAutoActivateEnabled && !isCallActive && !SenseLockActivity.isSenseActive && (now - lastScreenOffTime > 1200L)) {
+                    lastScreenOffTime = now
+                    Log.d("GestureMusic", "Starting Sense Lock Screen quietly on screen off")
+
                     try {
                         val lockIntent = Intent(context, SenseLockActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                            )
                         }
                         context.startActivity(lockIntent)
                     } catch (e: Exception) {
-                        Log.e("GestureMusic", "Failed to start SenseLockActivity: ${e.message}")
+                        Log.e("GestureMusic", "Start SenseLockActivity failed: ${e.message}")
                     }
-                }, 150)
+                } else {
+                    Log.d("GestureMusic", "Allowing normal screen sleep without interference")
+                }
             }
         }
     }
@@ -72,6 +102,20 @@ class UniversalMediaService : NotificationListenerService() {
             }
         }
         
+        fun adjustVolume(isIncrease: Boolean, context: Context) {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val step = kotlin.math.max(1, kotlin.math.round(maxVol * 0.10f).toInt())
+            val newVol = if (isIncrease) {
+                kotlin.math.min(maxVol, currentVol + step)
+            } else {
+                kotlin.math.max(0, currentVol - step)
+            }
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, AudioManager.FLAG_SHOW_UI)
+            Log.d("GestureMusic", "Volume adjusted: $currentVol -> $newVol (step: $step, max: $maxVol)")
+        }
+
         fun updatePlaybackStatus() {
             val newState = activeController?.playbackState?.state == PlaybackState.STATE_PLAYING
             if (newState != isMusicPlaying) {
@@ -84,15 +128,17 @@ class UniversalMediaService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        registerReceiver(screenReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(screenReceiver, filter)
+        }
         updateConfig()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "UPDATE_CONFIG") {
-            updateConfig()
-        }
-        return super.onStartCommand(intent, flags, startId)
+        updateConfig()
+        return START_STICKY
     }
 
     private fun updateConfig() {

@@ -1,11 +1,15 @@
 package com.example.universaloffscreenmusic
 
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PointF
-import android.media.audiofx.Visualizer
+import android.media.AudioManager
 import android.os.*
+import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
@@ -22,14 +26,16 @@ class SenseLockActivity : AppCompatActivity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var edgeLightingView: EdgeLightingView
     private lateinit var magicTrailView: MagicTrailView
-    private var visualizer: Visualizer? = null
     private var vibrator: Vibrator? = null
 
     private var isNextEnabled = true
     private var isPrevEnabled = true
     private var isPauseEnabled = true
+    private var isVolUpEnabled = true
+    private var isVolDownEnabled = true
     private var isEdgeEnabled = true
     private var edgeTheme = "RAINBOW"
+    private var isTestMode = false
 
     private val touchPoints = mutableListOf<PointF>()
     private var lastTapTime = 0L
@@ -37,26 +43,71 @@ class SenseLockActivity : AppCompatActivity() {
     private var touchDownTime = 0L
     private val DOUBLE_TAP_THRESHOLD = 380L
 
+    private var createTime = 0L
+
+    companion object {
+        var isSenseActive = false
+        var lastUserExitTime = 0L
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private val playbackMonitor = object : Runnable {
         override fun run() {
+            // Strictly exit if incoming phone call or active communication
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null && (audioManager.mode == AudioManager.MODE_IN_CALL ||
+                            audioManager.mode == AudioManager.MODE_RINGTONE ||
+                            audioManager.mode == AudioManager.MODE_IN_COMMUNICATION)) {
+                Log.d("GestureMusic", "Phone call / ringtone active -> Strictly exiting gesture mode")
+                finish()
+                return
+            }
+
             if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
-                if (UniversalMediaService.isMusicPlaying) {
+                if (isTestMode) {
                     edgeLightingView.startAnimation()
-                    startVisualizer()
-                } else {
-                    edgeLightingView.stopAnimation()
-                    stopVisualizer()
                 }
             }
             handler.postDelayed(this, 300)
         }
     }
 
+    private val systemEventReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            if (action == Intent.ACTION_USER_PRESENT ||
+                action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
+                Log.d("GestureMusic", "System event: $action -> Exiting gesture mode")
+                finish()
+            } else if (action == Intent.ACTION_SCREEN_ON) {
+                if (System.currentTimeMillis() - createTime > 1200L) {
+                    Log.d("GestureMusic", "Screen On / Power Button Wake -> Exiting Sense to reveal Lockscreen")
+                    finish()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        createTime = System.currentTimeMillis()
+        isSenseActive = true
+        isTestMode = intent.getBooleanExtra("is_test_mode", false)
         setupLockScreenFlags()
         hideSystemUI()
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                finish()
+            }
+        })
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        registerReceiver(systemEventReceiver, filter)
 
         @Suppress("DEPRECATION")
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -71,18 +122,60 @@ class SenseLockActivity : AppCompatActivity() {
         handler.post(playbackMonitor)
     }
 
+    override fun onResume() {
+        super.onResume()
+        isSenseActive = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isSenseActive = false
+        lastUserExitTime = System.currentTimeMillis()
+        if (!isChangingConfigurations) {
+            finish()
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        finish()
+    }
+
     private fun setupLockScreenFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
-            setTurnScreenOn(true)
         }
         @Suppress("DEPRECATION")
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
+    }
+
+    private fun showConfirmationGlow() {
+        if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
+            edgeLightingView.startAnimation()
+            handler.postDelayed({
+                if (!isTestMode) {
+                    edgeLightingView.stopAnimation()
+                }
+            }, 1000L)
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_POWER || keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            finish()
+            return super.onKeyDown(keyCode, event)
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            finish()
+        }
     }
 
     private fun hideSystemUI() {
@@ -97,6 +190,8 @@ class SenseLockActivity : AppCompatActivity() {
         isNextEnabled = prefs.getBoolean("gesture_next", true)
         isPrevEnabled = prefs.getBoolean("gesture_prev", true)
         isPauseEnabled = prefs.getBoolean("gesture_pause", true)
+        isVolUpEnabled = prefs.getBoolean("gesture_vol_up", true)
+        isVolDownEnabled = prefs.getBoolean("gesture_vol_down", true)
         isEdgeEnabled = prefs.getBoolean("edge_lighting_enabled", true)
         edgeTheme = prefs.getString("edge_lighting_theme", "RAINBOW") ?: "RAINBOW"
     }
@@ -136,7 +231,9 @@ class SenseLockActivity : AppCompatActivity() {
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount == 2 && isPauseEnabled) {
                     triggerHaptic(1)
+                    showConfirmationGlow()
                     UniversalMediaService.togglePlayPause()
+                    return true
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -154,31 +251,36 @@ class SenseLockActivity : AppCompatActivity() {
                 val maxY = touchPoints.maxOfOrNull { it.y } ?: event.y
                 val totalMovement = hypot(maxX - minX, maxY - minY)
 
-                // Stationary Tap check (Double Tap to Open Phone)
-                if (duration < 300L && totalMovement < 60f) {
-                    val prevPoint = lastTapPoint
-                    val timeSinceLastTap = now - lastTapTime
+                // Any tap / stationary touch on lock screen -> Strictly exit gesture mode
+                if (duration < 400L && totalMovement < 70f) {
+                    Log.d("GestureMusic", "Tap detected on lock screen -> Strictly exiting gesture mode")
+                    unlockAndDismiss()
+                    return true
+                }
 
-                    if (timeSinceLastTap < DOUBLE_TAP_THRESHOLD && prevPoint != null && hypot(pt.x - prevPoint.x, pt.y - prevPoint.y) < 220f) {
-                        Log.d("GestureMusic", "Lock Screen Double Tap -> Unlocking phone!")
-                        unlockAndDismiss()
-                        lastTapTime = 0L
-                        lastTapPoint = null
-                        return true
-                    } else {
-                        lastTapTime = now
-                        lastTapPoint = pt
-                    }
-                } else {
-                    evaluateShape(touchPoints)
+                // If it's a gesture stroke, evaluate shape
+                val gestureRecognized = evaluateShape(touchPoints)
+                if (!gestureRecognized) {
+                    // Any other swipe or touch -> Strictly exit gesture mode
+                    Log.d("GestureMusic", "Unrecognized touch/action -> Strictly exiting gesture mode")
+                    finish()
                 }
             }
         }
         return true
     }
 
-    private fun evaluateShape(points: List<PointF>) {
-        if (points.size < 4) return
+    private fun calculateSignedArea(points: List<PointF>): Float {
+        var area = 0f
+        for (i in 0 until points.size - 1) {
+            area += (points[i].x * points[i + 1].y) - (points[i + 1].x * points[i].y)
+        }
+        area += (points.last().x * points.first().y) - (points.first().x * points.last().y)
+        return area / 2f
+    }
+
+    private fun evaluateShape(points: List<PointF>): Boolean {
+        if (points.size < 4) return false
 
         val minX = points.minOf { it.x }
         val maxX = points.maxOf { it.x }
@@ -190,45 +292,79 @@ class SenseLockActivity : AppCompatActivity() {
         val start = points.first()
         val end = points.last()
 
-        if (width < 80f && height < 80f) return
+        val screenH = rootLayout.height.toFloat().takeIf { it > 0f } ?: resources.displayMetrics.heightPixels.toFloat()
 
-        // 1. Next Track: Right Arrow ( > ) OR Horizontal Swipe Right ( ---> )
+        // 1. Swipe Down from Top (Notification Shade / Quick Settings)
+        if (start.y < screenH * 0.22f && (end.y - start.y) > 100f && height > width) {
+            Log.d("GestureMusic", "Top swipe down -> Exiting mode")
+            finish()
+            return true
+        }
+
+        // 2. Swipe Up from Bottom (Home / Unlock navigation)
+        if (start.y > screenH * 0.78f && (start.y - end.y) > 100f && height > width) {
+            Log.d("GestureMusic", "Bottom swipe up -> Exiting mode")
+            finish()
+            return true
+        }
+
+        if (width < 60f && height < 60f) return false
+
+        // 3. Next Track: Right Arrow ( > ) OR Horizontal Swipe Right ( ---> )
         if (isNextEnabled) {
-            val isArrowRight = width > 120f && start.x < minX + width * 0.45f && end.x < minX + width * 0.45f && maxX > start.x + 80f
-            val isSwipeRight = width > 140f && height < width * 0.75f && start.x < minX + width * 0.35f && end.x > maxX - width * 0.35f
+            val isArrowRight = width > 80f && start.x < minX + width * 0.5f && end.x < minX + width * 0.5f && maxX > minX + 60f
+            val isSwipeRight = width > 90f && height < width * 0.9f && (end.x - start.x) > 70f
 
             if (isArrowRight || isSwipeRight) {
                 Log.d("GestureMusic", "Next Track Gesture recognized on Lock Screen")
                 triggerHaptic(2)
+                showConfirmationGlow()
                 UniversalMediaService.sendNext()
-                return
+                return true
             }
         }
 
-        // 2. Previous Track: Left Arrow ( < ) OR Horizontal Swipe Left ( <--- )
+        // 4. Previous Track: Left Arrow ( < ) OR Horizontal Swipe Left ( <--- )
         if (isPrevEnabled) {
-            val isArrowLeft = width > 120f && start.x > maxX - width * 0.45f && end.x > maxX - width * 0.45f && minX < start.x - 80f
-            val isSwipeLeft = width > 140f && height < width * 0.75f && start.x > maxX - width * 0.35f && end.x < minX + width * 0.35f
+            val isArrowLeft = width > 80f && start.x > maxX - width * 0.5f && end.x > maxX - width * 0.5f && minX < maxX - 60f
+            val isSwipeLeft = width > 90f && height < width * 0.9f && (start.x - end.x) > 70f
 
             if (isArrowLeft || isSwipeLeft) {
                 Log.d("GestureMusic", "Previous Track Gesture recognized on Lock Screen")
                 triggerHaptic(2)
+                showConfirmationGlow()
                 UniversalMediaService.sendPrevious()
-                return
+                return true
             }
         }
 
-        // 3. Play / Pause: Circle 'O' Gesture
-        if (isPauseEnabled) {
-            val distStartEnd = hypot(start.x - end.x, start.y - end.y)
-            val isCircle = width > 90f && height > 90f && distStartEnd < max(width, height) * 0.50f
-            if (isCircle) {
-                Log.d("GestureMusic", "Circle Play/Pause Gesture recognized on Lock Screen")
+        // 5. Circle Gesture: Clockwise (Volume UP) / Anticlockwise (Volume DOWN)
+        val distStartEnd = hypot(start.x - end.x, start.y - end.y)
+        val isCircle = width > 60f && height > 60f && distStartEnd < max(width, height) * 0.65f
+        if (isCircle) {
+            val signedArea = calculateSignedArea(points)
+            if (signedArea > 0f && isVolUpEnabled) {
+                Log.d("GestureMusic", "Clockwise Circle (Volume UP +10%) recognized")
                 triggerHaptic(1)
+                showConfirmationGlow()
+                UniversalMediaService.adjustVolume(isIncrease = true, this)
+                return true
+            } else if (signedArea < 0f && isVolDownEnabled) {
+                Log.d("GestureMusic", "Anticlockwise Circle (Volume DOWN -10%) recognized")
+                triggerHaptic(1)
+                showConfirmationGlow()
+                UniversalMediaService.adjustVolume(isIncrease = false, this)
+                return true
+            } else if (isPauseEnabled) {
+                Log.d("GestureMusic", "Circle Play/Pause Gesture recognized")
+                triggerHaptic(1)
+                showConfirmationGlow()
                 UniversalMediaService.togglePlayPause()
-                return
+                return true
             }
         }
+
+        return false
     }
 
     private fun unlockAndDismiss() {
@@ -274,46 +410,11 @@ class SenseLockActivity : AppCompatActivity() {
         }
     }
 
-    private fun startVisualizer() {
-        if (visualizer != null) return
-        try {
-            visualizer = Visualizer(0).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1]
-                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                    override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
-                        waveform?.let {
-                            var sum = 0f
-                            for (b in it) {
-                                sum += abs(b.toInt() - 128).toFloat()
-                            }
-                            val amp = sum / it.size / 128f
-                            if (::edgeLightingView.isInitialized) {
-                                edgeLightingView.amplitude = edgeLightingView.amplitude * 0.7f + amp * 0.3f
-                            }
-                        }
-                    }
-
-                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
-                }, Visualizer.getMaxCaptureRate() / 2, true, false)
-                enabled = true
-            }
-        } catch (e: Exception) {
-            Log.e("GestureMusic", "Visualizer failed: ${e.message}")
-        }
-    }
-
-    private fun stopVisualizer() {
-        visualizer?.enabled = false
-        visualizer?.release()
-        visualizer = null
-        if (::edgeLightingView.isInitialized) {
-            edgeLightingView.amplitude = 0f
-        }
-    }
-
     override fun onDestroy() {
         super.onDestroy()
-        stopVisualizer()
+        try {
+            unregisterReceiver(systemEventReceiver)
+        } catch (e: Exception) {}
         handler.removeCallbacks(playbackMonitor)
     }
 }

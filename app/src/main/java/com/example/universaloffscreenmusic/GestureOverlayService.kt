@@ -12,7 +12,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.media.audiofx.Visualizer
+import android.media.AudioManager
 import android.os.*
 import android.util.Log
 import android.view.*
@@ -28,7 +28,6 @@ class GestureOverlayService : Service(), SensorEventListener {
     private lateinit var overlayView: View
     private lateinit var magicTrailView: MagicTrailView
     private lateinit var edgeLightingView: EdgeLightingView
-    private var visualizer: Visualizer? = null
     
     private lateinit var powerManager: PowerManager
     private lateinit var sensorManager: SensorManager
@@ -39,6 +38,8 @@ class GestureOverlayService : Service(), SensorEventListener {
     private var isNextEnabled = true
     private var isPrevEnabled = true
     private var isPauseEnabled = true
+    private var isVolUpEnabled = true
+    private var isVolDownEnabled = true
     private var controlMode = "LOCK_SCREEN"
     
     private var isEdgeEnabled = true
@@ -55,65 +56,31 @@ class GestureOverlayService : Service(), SensorEventListener {
     private val handler = Handler(Looper.getMainLooper())
     private val playbackMonitor = object : Runnable {
         override fun run() {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null && (audioManager.mode == AudioManager.MODE_IN_CALL ||
+                            audioManager.mode == AudioManager.MODE_RINGTONE ||
+                            audioManager.mode == AudioManager.MODE_IN_COMMUNICATION)) {
+                Log.d("GestureMusic", "Phone call / ringtone active -> Stopping overlay")
+                stopSelf()
+                return
+            }
+
             if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
                 if (UniversalMediaService.isMusicPlaying) {
                     edgeLightingView.startAnimation()
-                    startVisualizer()
                 } else {
                     edgeLightingView.stopAnimation()
-                    stopVisualizer()
                 }
             }
             handler.postDelayed(this, 300) 
         }
     }
 
-    private fun startVisualizer() {
-        if (visualizer != null) return
-        try {
-            visualizer = Visualizer(0).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1]
-                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                    override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
-                        waveform?.let {
-                            var sum = 0f
-                            for (b in it) {
-                                sum += abs(b.toInt() - 128).toFloat()
-                            }
-                            val amp = sum / it.size / 128f
-                            if (::edgeLightingView.isInitialized) {
-                                edgeLightingView.amplitude = edgeLightingView.amplitude * 0.7f + amp * 0.3f
-                            }
-                        }
-                    }
-
-                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
-                }, Visualizer.getMaxCaptureRate() / 2, true, false)
-                enabled = true
-            }
-        } catch (e: Exception) {
-            Log.e("GestureMusic", "Visualizer failed: ${e.message}")
-        }
-    }
-
-    private fun stopVisualizer() {
-        visualizer?.enabled = false
-        visualizer?.release()
-        visualizer = null
-        if (::edgeLightingView.isInitialized) {
-            edgeLightingView.amplitude = 0f
-        }
-    }
-
-    private val screenStateReceiver = object : BroadcastReceiver() {
+    private val systemStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // Ignore SCREEN_ON within 2 seconds of service creation to avoid self-canceling during wakeup
-            if (intent?.action == Intent.ACTION_SCREEN_ON) {
-                if (System.currentTimeMillis() - serviceStartTime > 2000L) {
-                    Log.d("GestureMusic", "User turned screen on manually, stopping overlay")
-                    stopSelf()
-                }
-            }
+            val action = intent?.action ?: return
+            Log.d("GestureMusic", "Overlay received system event: $action -> Exiting gesture overlay")
+            stopSelf()
         }
     }
 
@@ -126,6 +93,8 @@ class GestureOverlayService : Service(), SensorEventListener {
         isNextEnabled = prefs.getBoolean("gesture_next", true)
         isPrevEnabled = prefs.getBoolean("gesture_prev", true)
         isPauseEnabled = prefs.getBoolean("gesture_pause", true)
+        isVolUpEnabled = prefs.getBoolean("gesture_vol_up", true)
+        isVolDownEnabled = prefs.getBoolean("gesture_vol_down", true)
         controlMode = prefs.getString("control_mode", "LOCK_SCREEN") ?: "LOCK_SCREEN"
         isEdgeEnabled = prefs.getBoolean("edge_lighting_enabled", true)
         edgeTheme = prefs.getString("edge_lighting_theme", "RAINBOW") ?: "RAINBOW"
@@ -147,23 +116,18 @@ class GestureOverlayService : Service(), SensorEventListener {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
 
-        val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
-        registerReceiver(screenStateReceiver, filter)
-
-        // Keep CPU and touchscreen digitizer active while screen appears off
-        try {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
             @Suppress("DEPRECATION")
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.SCREEN_DIM_WAKE_LOCK or
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                        PowerManager.ON_AFTER_RELEASE,
-                "Sense:ScreenOnWake"
-            ).apply {
-                acquire(15 * 60 * 1000L) // 15 min lock
-            }
-        } catch (e: Exception) {
-            Log.e("GestureMusic", "WakeLock error: ${e.message}")
+            addAction(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+            addAction(android.telephony.TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_HEADSET_PLUG)
         }
+        registerReceiver(systemStateReceiver, filter)
 
         startSenseForegroundService()
         createBlackOverlay()
@@ -180,7 +144,7 @@ class GestureOverlayService : Service(), SensorEventListener {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Sense Active")
-            .setContentText("Off-screen music gestures and double-tap wake active.")
+            .setContentText("Off-screen music gestures active.")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -202,18 +166,13 @@ class GestureOverlayService : Service(), SensorEventListener {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply { 
-            // 0.0f ensures AMOLED/OLED displays emit 0 light (true pitch black off appearance)
-            screenBrightness = 0.0f
-            buttonBrightness = 0.0f
+            screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            buttonBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
@@ -297,6 +256,15 @@ class GestureOverlayService : Service(), SensorEventListener {
         return true
     }
 
+    private fun calculateSignedArea(points: List<PointF>): Float {
+        var area = 0f
+        for (i in 0 until points.size - 1) {
+            area += (points[i].x * points[i + 1].y) - (points[i + 1].x * points[i].y)
+        }
+        area += (points.last().x * points.first().y) - (points.first().x * points.last().y)
+        return area / 2f
+    }
+
     private fun evaluateShape(points: List<PointF>) {
         if (points.size < 4) return
 
@@ -310,12 +278,28 @@ class GestureOverlayService : Service(), SensorEventListener {
         val start = points.first()
         val end = points.last()
 
-        if (width < 80f && height < 80f) return
+        val screenH = resources.displayMetrics.heightPixels.toFloat()
+
+        // Swipe Down from Top (Pull down notification bar / quick settings)
+        if (start.y < screenH * 0.22f && (end.y - start.y) > 120f && height > width) {
+            Log.d("GestureMusic", "Top swipe down -> Exiting overlay to reveal notification shade")
+            stopSelf()
+            return
+        }
+
+        // Swipe Up from Bottom (Home navigation / exit app)
+        if (start.y > screenH * 0.78f && (start.y - end.y) > 120f && height > width) {
+            Log.d("GestureMusic", "Bottom swipe up -> Exiting overlay to reveal home/system")
+            stopSelf()
+            return
+        }
+
+        if (width < 60f && height < 60f) return
 
         // 1. Next Track: Right Arrow ( > ) OR Horizontal Swipe Right ( ---> )
         if (isNextEnabled) {
-            val isArrowRight = width > 120f && start.x < minX + width * 0.45f && end.x < minX + width * 0.45f && maxX > start.x + 80f
-            val isSwipeRight = width > 140f && height < width * 0.75f && start.x < minX + width * 0.35f && end.x > maxX - width * 0.35f
+            val isArrowRight = width > 80f && start.x < minX + width * 0.5f && end.x < minX + width * 0.5f && maxX > minX + 60f
+            val isSwipeRight = width > 90f && height < width * 0.9f && (end.x - start.x) > 70f
 
             if (isArrowRight || isSwipeRight) {
                 Log.d("GestureMusic", "Next Track Gesture recognized")
@@ -327,8 +311,8 @@ class GestureOverlayService : Service(), SensorEventListener {
 
         // 2. Previous Track: Left Arrow ( < ) OR Horizontal Swipe Left ( <--- )
         if (isPrevEnabled) {
-            val isArrowLeft = width > 120f && start.x > maxX - width * 0.45f && end.x > maxX - width * 0.45f && minX < start.x - 80f
-            val isSwipeLeft = width > 140f && height < width * 0.75f && start.x > maxX - width * 0.35f && end.x < minX + width * 0.35f
+            val isArrowLeft = width > 80f && start.x > maxX - width * 0.5f && end.x > maxX - width * 0.5f && minX < maxX - 60f
+            val isSwipeLeft = width > 90f && height < width * 0.9f && (start.x - end.x) > 70f
 
             if (isArrowLeft || isSwipeLeft) {
                 Log.d("GestureMusic", "Previous Track Gesture recognized")
@@ -338,11 +322,22 @@ class GestureOverlayService : Service(), SensorEventListener {
             }
         }
 
-        // 3. Play / Pause: Circle 'O' Gesture
-        if (isPauseEnabled) {
-            val distStartEnd = hypot(start.x - end.x, start.y - end.y)
-            val isCircle = width > 90f && height > 90f && distStartEnd < max(width, height) * 0.50f
-            if (isCircle) {
+        // 3. Circle Gesture: Clockwise (Volume UP) / Anticlockwise (Volume DOWN)
+        val distStartEnd = hypot(start.x - end.x, start.y - end.y)
+        val isCircle = width > 60f && height > 60f && distStartEnd < max(width, height) * 0.65f
+        if (isCircle) {
+            val signedArea = calculateSignedArea(points)
+            if (signedArea > 0f && isVolUpEnabled) {
+                Log.d("GestureMusic", "Clockwise Circle (Volume UP +10%) recognized")
+                triggerHaptic(1)
+                UniversalMediaService.adjustVolume(isIncrease = true, this)
+                return
+            } else if (signedArea < 0f && isVolDownEnabled) {
+                Log.d("GestureMusic", "Anticlockwise Circle (Volume DOWN -10%) recognized")
+                triggerHaptic(1)
+                UniversalMediaService.adjustVolume(isIncrease = false, this)
+                return
+            } else if (isPauseEnabled) {
                 Log.d("GestureMusic", "Circle Play/Pause Gesture recognized")
                 triggerHaptic(1)
                 UniversalMediaService.togglePlayPause()
@@ -400,13 +395,12 @@ class GestureOverlayService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopVisualizer()
         handler.removeCallbacks(playbackMonitor)
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
         try {
-            unregisterReceiver(screenStateReceiver)
+            unregisterReceiver(systemStateReceiver)
         } catch (e: Exception) { }
         sensorManager.unregisterListener(this)
         

@@ -59,7 +59,7 @@ class EdgeLightingView @JvmOverloads constructor(
 
     private var currentTheme = "RAINBOW"
     private var time = 0f
-    var amplitude = 0f // Controlled by Visualizer in GestureOverlayService
+    var amplitude = 0f
 
     // Apple Intelligence / Siri Radiant Spectrum
     private val paletteSiri = intArrayOf(
