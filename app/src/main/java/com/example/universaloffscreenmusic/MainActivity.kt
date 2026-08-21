@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         
         val isMasterOn = prefs.getBoolean("master_enabled", true)
         switchMaster.isChecked = isMasterOn
-        switchAuto.isChecked = prefs.getBoolean("auto_activate", false)
+        switchAuto.isChecked = prefs.getBoolean("auto_activate", true)
         switchEdge.isChecked = prefs.getBoolean("edge_lighting_enabled", true)
         checkNext.isChecked = prefs.getBoolean("gesture_next", true)
         checkPrev.isChecked = prefs.getBoolean("gesture_prev", true)
@@ -127,11 +127,17 @@ class MainActivity : AppCompatActivity() {
 
         btnStartSense.setOnClickListener {
             if (areAllPermissionsGranted()) {
-                val intent = Intent(this, GestureOverlayService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
+                val mode = if (toggleGroupMode.checkedButtonId == R.id.btnModeAnywhere) "ANYWHERE" else "LOCK_SCREEN"
+                if (mode == "LOCK_SCREEN") {
+                    val intent = Intent(this, SenseLockActivity::class.java)
+                    startActivity(intent)
                 } else {
-                    startService(intent)
+                    val intent = Intent(this, GestureOverlayService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
                 }
             } else {
                 Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_SHORT).show()
@@ -158,10 +164,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnThemeAurora).isEnabled = isEnabled
         findViewById<Button>(R.id.btnThemeFire).isEnabled = isEnabled
 
-        if (isEnabled && toggleGroupMode.checkedButtonId == R.id.btnModeAnywhere) {
-            btnStartSense.visibility = View.VISIBLE
+        btnStartSense.visibility = if (isEnabled) View.VISIBLE else View.GONE
+        if (toggleGroupMode.checkedButtonId == R.id.btnModeAnywhere) {
+            btnStartSense.text = "Start Floating Sense Overlay"
         } else {
-            btnStartSense.visibility = View.GONE
+            btnStartSense.text = "Test Sense Lock Screen Mode Now"
         }
     }
 

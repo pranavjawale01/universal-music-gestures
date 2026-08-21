@@ -33,16 +33,17 @@ class UniversalMediaService : NotificationListenerService() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.d("GestureMusic", "Screen Receiver event: ${intent.action}")
             if (intent.action == Intent.ACTION_SCREEN_OFF && isMasterEnabled && isAutoActivateEnabled) {
-                Log.d("GestureMusic", "Screen OFF, preparing to start overlay...")
-                // Add a small delay to ensure the screen has fully transitioned off
+                Log.d("GestureMusic", "Screen OFF, preparing lockscreen gestures...")
                 handler.postDelayed({
-                    val serviceIntent = Intent(context, GestureOverlayService::class.java)
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
+                    try {
+                        val lockIntent = Intent(context, SenseLockActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        }
+                        context.startActivity(lockIntent)
+                    } catch (e: Exception) {
+                        Log.e("GestureMusic", "Failed to start SenseLockActivity: ${e.message}")
                     }
-                }, 500)
+                }, 150)
             }
         }
     }
@@ -97,7 +98,7 @@ class UniversalMediaService : NotificationListenerService() {
     private fun updateConfig() {
         val prefs = getSharedPreferences("gestures_prefs", Context.MODE_PRIVATE)
         isMasterEnabled = prefs.getBoolean("master_enabled", true)
-        isAutoActivateEnabled = prefs.getBoolean("auto_activate", false)
+        isAutoActivateEnabled = prefs.getBoolean("auto_activate", true)
     }
 
     override fun onListenerConnected() {
