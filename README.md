@@ -12,13 +12,13 @@
 
 <br/>
 
-<a href="https://github.com/pranavjawale01/universal-music-gestures/raw/main/output/Sense.apk" download="Sense.apk">
+<a href="https://github.com/pranavjawale01/universal-music-gestures/raw/refs/heads/main/output/Sense.apk" download="Sense.apk">
   <img src="https://img.shields.io/badge/⚡%20DOWNLOAD%20SENSE%20APK%20(v1.0)-10B981?style=for-the-badge&logo=android&logoColor=white&labelColor=059669" alt="Direct Download APK" height="50"/>
 </a>
 
 <br/><br/>
 
-> 📲 **[Direct Download APK Link](https://github.com/pranavjawale01/universal-music-gestures/raw/main/output/Sense.apk)** *(Tap to start direct download on your device)*
+> 📲 **[Direct Download APK Link](https://github.com/pranavjawale01/universal-music-gestures/raw/refs/heads/main/output/Sense.apk)** *(Tap to start direct download on your device)*
 
 ---
 
@@ -60,7 +60,7 @@
 
 ## 🚀 3-Step Quick Start
 
-1. **Download & Install**: Grab the latest **[Sense.apk](https://github.com/pranavjawale01/universal-music-gestures/raw/main/output/Sense.apk)**.
+1. **Download & Install**: Grab the latest **[Sense.apk](https://github.com/pranavjawale01/universal-music-gestures/raw/refs/heads/main/output/Sense.apk)**.
 2. **Grant Permissions**: Tap the 3 circular status badges at the top-right of the dashboard until all turn 🟢.
 3. **Play Music & Lock**: Start playing music on Spotify / YouTube Music / Apple Music and lock your phone!
 
