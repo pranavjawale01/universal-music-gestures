@@ -169,15 +169,8 @@ class SenseLockActivity : AppCompatActivity() {
     }
 
     private fun showConfirmationGlow() {
-        if (::edgeLightingView.isInitialized) {
+        if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
             edgeLightingView.startAnimation()
-            if (!isEdgeEnabled && !isTestMode) {
-                handler.postDelayed({
-                    if (!isEdgeEnabled && !isTestMode) {
-                        edgeLightingView.stopAnimation()
-                    }
-                }, 800L)
-            }
         }
     }
 
