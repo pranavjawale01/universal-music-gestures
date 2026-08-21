@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Sense</string>
+    <string name="master_toggle">Enable Sense Gestures</string>
+    <string name="auto_lock_title">Auto-Activate on Lock</string>
+    <string name="auto_lock_desc">Automatically start gestures when you lock your device.</string>
+    <string name="gestures_group_title">Active Gestures</string>
+    <string name="gesture_next_title">Next Track (>)</string>
+    <string name="gesture_prev_title">Previous Track (&lt;)</string>
+    <string name="gesture_pause_title">Play/Pause (||)</string>
+    <string name="permissions_title">Setup &amp; Permissions</string>
+    <string name="permissions_btn">Grant Required Access</string>
+    <string name="edge_lighting_title">Edge Lighting Effect</string>
+    <string name="edge_lighting_desc">Glow the screen borders while music is playing.</string>
+    <string name="theme_rainbow">Neon Liquid</string>
+    <string name="theme_aurora">Plasma Pulse</string>
+    <string name="theme_fire">Cyber Flow</string>
+</resources>
