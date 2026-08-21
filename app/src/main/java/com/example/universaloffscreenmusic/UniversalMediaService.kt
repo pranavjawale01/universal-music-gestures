@@ -54,7 +54,7 @@ class UniversalMediaService : NotificationListenerService() {
                 Log.d("GestureMusic", "Screen off detected. isAudioActive=$isAudioActive, isCallActive=$isCallActive")
 
                 // Auto-launch when enabled and no phone call is ringing/active
-                if (isMasterEnabled && isAutoActivateEnabled && !isCallActive && !SenseLockActivity.isSenseActive && (now - lastScreenOffTime > 1200L)) {
+                if (isMasterEnabled && isAutoActivateEnabled && !isCallActive && !SenseLockActivity.isSenseActive && (now - lastScreenOffTime > 1500L) && (now - SenseLockActivity.lastUserExitTime > 1500L)) {
                     lastScreenOffTime = now
                     Log.d("GestureMusic", "Starting Sense Lock Screen quietly on screen off")
 

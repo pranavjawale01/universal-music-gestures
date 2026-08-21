@@ -79,11 +79,6 @@ class SenseLockActivity : AppCompatActivity() {
                 action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
                 Log.d("GestureMusic", "System event: $action -> Exiting gesture mode")
                 finish()
-            } else if (action == Intent.ACTION_SCREEN_ON) {
-                if (System.currentTimeMillis() - createTime > 1200L) {
-                    Log.d("GestureMusic", "Screen On / Power Button Wake -> Exiting Sense to reveal Lockscreen")
-                    finish()
-                }
             }
         }
     }
@@ -105,7 +100,6 @@ class SenseLockActivity : AppCompatActivity() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
-            addAction(Intent.ACTION_SCREEN_ON)
         }
         registerReceiver(systemEventReceiver, filter)
 
@@ -131,9 +125,18 @@ class SenseLockActivity : AppCompatActivity() {
         super.onPause()
         isSenseActive = false
         lastUserExitTime = System.currentTimeMillis()
-        if (!isChangingConfigurations) {
-            finish()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isSenseActive = false
+        lastUserExitTime = System.currentTimeMillis()
+        try {
+            unregisterReceiver(systemEventReceiver)
+        } catch (e: Exception) {
+            // Ignored
         }
+        handler.removeCallbacksAndMessages(null)
     }
 
     override fun onUserLeaveHint() {
@@ -144,10 +147,13 @@ class SenseLockActivity : AppCompatActivity() {
     private fun setupLockScreenFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
+            setTurnScreenOn(true)
         }
         @Suppress("DEPRECATION")
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
         )
     }
@@ -408,13 +414,5 @@ class SenseLockActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("GestureMusic", "Vibration failed: ${e.message}")
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            unregisterReceiver(systemEventReceiver)
-        } catch (e: Exception) {}
-        handler.removeCallbacks(playbackMonitor)
     }
 }
