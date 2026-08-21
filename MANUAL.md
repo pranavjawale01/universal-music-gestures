@@ -103,6 +103,10 @@ $$\text{Signed Area} = \frac{1}{2} \sum_{i=0}^{n-1} (x_i y_{i+1} - x_{i+1} y_i) 
 
 ## 8. Troubleshooting FAQ
 
+**Q: Google Play Protect blocks installation ("App blocked to protect your device").**
+- **Cause**: Android 13/14+ Enhanced Fraud Protection automatically flags apps using `BIND_NOTIFICATION_LISTENER_SERVICE` when sideloaded from browsers or file managers. Sense uses this permission exclusively for media playback controls.
+- **Fix**: Open **Play Store** ➔ Tap your **Profile Icon** ➔ **Play Protect** ➔ **Settings (⚙️)** ➔ Turn **OFF** **"Scan apps with Play Protect"** ➔ Return to your file manager and install `Sense.apk`. You can re-enable Play Protect after installation.
+
 **Q: Gestures are not working when screen is locked.**
 - Ensure all 3 permission circles in the top-right header are green.
 - Confirm music is actively playing in your music app before turning off the screen.
