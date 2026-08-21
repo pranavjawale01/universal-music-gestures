@@ -16,15 +16,15 @@ class MagicTrailView @JvmOverloads constructor(
     private val particles = mutableListOf<SenseParticle>()
     private val random = Random()
 
-    // Layer 1: Atmospheric Super-Glow
+    // Layer 1: Atmospheric Glow
     private val auraPaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 220f // Massive glow
+        strokeWidth = 48f // Refined outer glow
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(110f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(24f, BlurMaskFilter.Blur.NORMAL)
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
 
@@ -32,11 +32,11 @@ class MagicTrailView @JvmOverloads constructor(
     private val midPaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 100f
+        strokeWidth = 22f // Medium radiant stroke
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(45f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.NORMAL)
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
 
@@ -44,11 +44,11 @@ class MagicTrailView @JvmOverloads constructor(
     private val corePaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 55f // Ultra-thick core
+        strokeWidth = 8f // Sleek crisp neon core
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(18f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(3f, BlurMaskFilter.Blur.NORMAL)
     }
 
     private val sparklePaint = Paint().apply {
@@ -120,15 +120,15 @@ class MagicTrailView @JvmOverloads constructor(
     }
 
     private fun emitSenseSparks(x: Float, y: Float) {
-        repeat(6) {
+        repeat(4) {
             particles.add(SenseParticle(
                 x, y,
-                (random.nextFloat() - 0.5f) * 20f,
-                (random.nextFloat() - 0.5f) * 20f,
-                random.nextFloat() * 15f + 5f
+                (random.nextFloat() - 0.5f) * 12f,
+                (random.nextFloat() - 0.5f) * 12f,
+                random.nextFloat() * 6f + 2f
             ))
         }
-        if (particles.size > 400) particles.removeAt(0)
+        if (particles.size > 250) particles.removeAt(0)
     }
 
     private fun updateParticles() {

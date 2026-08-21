@@ -53,8 +53,10 @@ class SenseLockActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val playbackMonitor = object : Runnable {
         override fun run() {
-            // Strictly exit if incoming phone call or active communication
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            val isAudioActive = UniversalMediaService.isMusicPlaying || (audioManager?.isMusicActive == true)
+
+            // Strictly exit if incoming phone call or active communication
             if (audioManager != null && (audioManager.mode == AudioManager.MODE_IN_CALL ||
                             audioManager.mode == AudioManager.MODE_RINGTONE ||
                             audioManager.mode == AudioManager.MODE_IN_COMMUNICATION)) {
@@ -63,12 +65,17 @@ class SenseLockActivity : AppCompatActivity() {
                 return
             }
 
-            if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
-                if (isTestMode) {
-                    edgeLightingView.startAnimation()
-                }
+            // If music stopped playing and not in test mode, exit gesture mode to normal lock screen
+            if (!isTestMode && !isAudioActive) {
+                Log.d("GestureMusic", "Music is not active -> Exiting Sense lock screen")
+                finish()
+                return
             }
-            handler.postDelayed(this, 300)
+
+            if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
+                edgeLightingView.startAnimation()
+            }
+            handler.postDelayed(this, 500)
         }
     }
 
@@ -119,6 +126,9 @@ class SenseLockActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         isSenseActive = true
+        if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
+            edgeLightingView.startAnimation()
+        }
     }
 
     override fun onPause() {
@@ -159,13 +169,15 @@ class SenseLockActivity : AppCompatActivity() {
     }
 
     private fun showConfirmationGlow() {
-        if (isEdgeEnabled && ::edgeLightingView.isInitialized) {
+        if (::edgeLightingView.isInitialized) {
             edgeLightingView.startAnimation()
-            handler.postDelayed({
-                if (!isTestMode) {
-                    edgeLightingView.stopAnimation()
-                }
-            }, 1000L)
+            if (!isEdgeEnabled && !isTestMode) {
+                handler.postDelayed({
+                    if (!isEdgeEnabled && !isTestMode) {
+                        edgeLightingView.stopAnimation()
+                    }
+                }, 800L)
+            }
         }
     }
 
@@ -215,6 +227,9 @@ class SenseLockActivity : AppCompatActivity() {
             setTheme(edgeTheme)
         }
         rootLayout.addView(edgeLightingView)
+        if (isEdgeEnabled) {
+            edgeLightingView.startAnimation()
+        }
 
         magicTrailView = MagicTrailView(this)
         rootLayout.addView(magicTrailView)

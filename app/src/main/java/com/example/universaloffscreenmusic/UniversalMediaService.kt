@@ -53,10 +53,10 @@ class UniversalMediaService : NotificationListenerService() {
 
                 Log.d("GestureMusic", "Screen off detected. isAudioActive=$isAudioActive, isCallActive=$isCallActive")
 
-                // Auto-launch when enabled and no phone call is ringing/active
-                if (isMasterEnabled && isAutoActivateEnabled && !isCallActive && !SenseLockActivity.isSenseActive && (now - lastScreenOffTime > 1500L) && (now - SenseLockActivity.lastUserExitTime > 1500L)) {
+                // STRICT: Auto-launch ONLY when music is actively playing and no phone call is ringing/active
+                if (isMasterEnabled && isAutoActivateEnabled && isAudioActive && !isCallActive && !SenseLockActivity.isSenseActive && (now - lastScreenOffTime > 1500L) && (now - SenseLockActivity.lastUserExitTime > 1500L)) {
                     lastScreenOffTime = now
-                    Log.d("GestureMusic", "Starting Sense Lock Screen quietly on screen off")
+                    Log.d("GestureMusic", "Music is actively playing -> Starting Sense Lock Screen on screen off")
 
                     try {
                         val lockIntent = Intent(context, SenseLockActivity::class.java).apply {
@@ -72,7 +72,7 @@ class UniversalMediaService : NotificationListenerService() {
                         Log.e("GestureMusic", "Start SenseLockActivity failed: ${e.message}")
                     }
                 } else {
-                    Log.d("GestureMusic", "Allowing normal screen sleep without interference")
+                    Log.d("GestureMusic", "No music playing or call active -> Allowing normal screen sleep")
                 }
             }
         }
