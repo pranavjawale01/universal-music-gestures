@@ -153,6 +153,9 @@ class GestureOverlayService : Service(), SensorEventListener {
         ).apply { 
             screenBrightness = 0.01f
             buttonBrightness = 0.0f
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         val root = FrameLayout(this)

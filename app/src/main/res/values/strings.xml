@@ -11,7 +11,7 @@
     <string name="permissions_btn">Grant Required Access</string>
     <string name="edge_lighting_title">Edge Lighting Effect</string>
     <string name="edge_lighting_desc">Glow the screen borders while music is playing.</string>
-    <string name="theme_rainbow">Rainbow</string>
-    <string name="theme_aurora">Aurora</string>
-    <string name="theme_fire">Fire</string>
+    <string name="theme_rainbow">Neon Liquid</string>
+    <string name="theme_aurora">Plasma Pulse</string>
+    <string name="theme_fire">Cyber Flow</string>
 </resources>
