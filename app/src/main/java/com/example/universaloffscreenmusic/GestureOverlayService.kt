@@ -12,11 +12,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.os.PowerManager
+import android.media.audiofx.Visualizer
+import android.os.*
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
@@ -29,6 +26,7 @@ class GestureOverlayService : Service(), SensorEventListener {
     private lateinit var overlayView: View
     private lateinit var magicTrailView: MagicTrailView
     private lateinit var edgeLightingView: EdgeLightingView
+    private var visualizer: Visualizer? = null
     
     private lateinit var powerManager: PowerManager
     private lateinit var sensorManager: SensorManager
@@ -54,12 +52,48 @@ class GestureOverlayService : Service(), SensorEventListener {
             if (isEdgeEnabled) {
                 if (UniversalMediaService.isMusicPlaying) {
                     edgeLightingView.startAnimation()
+                    startVisualizer()
                 } else {
                     edgeLightingView.stopAnimation()
+                    stopVisualizer()
                 }
             }
-            handler.postDelayed(this, 1000)
+            handler.postDelayed(this, 300) 
         }
+    }
+
+    private fun startVisualizer() {
+        if (visualizer != null) return
+        try {
+            visualizer = Visualizer(0).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[1]
+                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                        waveform?.let {
+                            var sum = 0f
+                            for (b in it) {
+                                sum += abs(b.toInt() - 128).toFloat()
+                            }
+                            val amp = sum / it.size / 128f
+                            // Smooth out the amplitude
+                            edgeLightingView.amplitude = edgeLightingView.amplitude * 0.7f + amp * 0.3f
+                        }
+                    }
+
+                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+                }, Visualizer.getMaxCaptureRate() / 2, true, false)
+                enabled = true
+            }
+        } catch (e: Exception) {
+            Log.e("GestureMusic", "Visualizer failed: ${e.message}")
+        }
+    }
+
+    private fun stopVisualizer() {
+        visualizer?.enabled = false
+        visualizer?.release()
+        visualizer = null
+        edgeLightingView.amplitude = 0f
     }
 
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -262,6 +296,7 @@ class GestureOverlayService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopVisualizer()
         handler.removeCallbacks(playbackMonitor)
         wakeLock?.let {
             if (it.isHeld) it.release()

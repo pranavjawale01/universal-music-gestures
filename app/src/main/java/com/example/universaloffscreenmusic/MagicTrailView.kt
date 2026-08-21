@@ -16,69 +16,54 @@ class MagicTrailView @JvmOverloads constructor(
     private val particles = mutableListOf<SenseParticle>()
     private val random = Random()
 
-    // VFX: Glowing Aura (Large Bloom)
+    // Layer 1: Atmospheric Super-Glow
     private val auraPaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 60f
+        strokeWidth = 220f // Massive glow
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(50f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(110f, BlurMaskFilter.Blur.NORMAL)
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
 
-    // VFX: Radiant Mid-layer
+    // Layer 2: Radiant White Energy
     private val midPaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 25f
+        strokeWidth = 100f
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(15f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(45f, BlurMaskFilter.Blur.NORMAL)
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
 
-    // VFX: Intense White Core
+    // Layer 3: High-Intensity Neon Core
     private val corePaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 12f
+        strokeWidth = 55f // Ultra-thick core
         strokeJoin = Paint.Join.ROUND
         strokeCap = Paint.Cap.ROUND
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(5f, BlurMaskFilter.Blur.NORMAL)
+        maskFilter = BlurMaskFilter(18f, BlurMaskFilter.Blur.NORMAL)
     }
 
-    // VFX: Sparkle Paint
     private val sparklePaint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.FILL
         isAntiAlias = true
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
-
-    private var masterAlpha = 255
-    private var isDisappearing = false
 
     private val vfxTickRunnable = object : Runnable {
         override fun run() {
-            var needsInvalidate = false
-            
-            if (isDisappearing) {
-                masterAlpha -= 15
-                if (masterAlpha <= 0) {
-                    resetVFX()
-                }
-                needsInvalidate = true
-            }
-
             if (particles.isNotEmpty()) {
                 updateParticles()
-                needsInvalidate = true
-            }
-
-            if (needsInvalidate) {
                 invalidate()
-                postDelayed(this, 20)
+                postDelayed(this, 16)
             }
         }
     }
@@ -86,27 +71,21 @@ class MagicTrailView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        // Draw Main Magical Paths (Multi-layered Bloom)
+        // Draw the white magical trails
         for (i in 0 until paths.size()) {
             val path = paths.valueAt(i)
-            
-            auraPaint.alpha = (masterAlpha * 0.25f).toInt()
+            auraPaint.alpha = 100
             canvas.drawPath(path, auraPaint)
-            
-            midPaint.alpha = (masterAlpha * 0.5f).toInt()
+            midPaint.alpha = 180
             canvas.drawPath(path, midPaint)
-            
-            corePaint.alpha = masterAlpha
+            corePaint.alpha = 255
             canvas.drawPath(path, corePaint)
         }
 
         // Draw Magical Sparks
         for (p in particles) {
             sparklePaint.alpha = (p.life * 255).toInt()
-            // Randomly flicker the sparkles
-            if (random.nextFloat() > 0.1f) {
-                canvas.drawCircle(p.x, p.y, p.size, sparklePaint)
-            }
+            canvas.drawCircle(p.x, p.y, p.size, sparklePaint)
         }
     }
 
@@ -116,10 +95,6 @@ class MagicTrailView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                removeCallbacks(vfxTickRunnable)
-                isDisappearing = false
-                masterAlpha = 255
-                
                 val p = Path()
                 p.moveTo(event.getX(index), event.getY(index))
                 paths.put(id, p)
@@ -131,14 +106,12 @@ class MagicTrailView @JvmOverloads constructor(
                     val px = event.getX(i)
                     val py = event.getY(i)
                     paths.get(pid)?.lineTo(px, py)
-                    
-                    // Emit sparkles at every segment of the trail
                     emitSenseSparks(px, py)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    isDisappearing = true
+                    resetVFX() // Immediate wipe as soon as finger is lifted
                 }
             }
             MotionEvent.ACTION_CANCEL -> resetVFX()
@@ -147,17 +120,15 @@ class MagicTrailView @JvmOverloads constructor(
     }
 
     private fun emitSenseSparks(x: Float, y: Float) {
-        // High density sparks for a professional look
-        repeat(4) {
+        repeat(6) {
             particles.add(SenseParticle(
                 x, y,
-                (random.nextFloat() - 0.5f) * 12f, // Velocity X
-                (random.nextFloat() - 0.5f) * 12f, // Velocity Y
-                random.nextFloat() * 7f + 2f      // Size
+                (random.nextFloat() - 0.5f) * 20f,
+                (random.nextFloat() - 0.5f) * 20f,
+                random.nextFloat() * 15f + 5f
             ))
         }
-        // Limit particle count for performance
-        if (particles.size > 200) particles.removeAt(0)
+        if (particles.size > 400) particles.removeAt(0)
     }
 
     private fun updateParticles() {
@@ -166,9 +137,9 @@ class MagicTrailView @JvmOverloads constructor(
             val p = it.next()
             p.x += p.vx
             p.y += p.vy
-            p.vx *= 0.95f // Air resistance
-            p.vy *= 0.95f 
-            p.life -= 0.04f // Fade out
+            p.vx *= 0.85f 
+            p.vy *= 0.85f 
+            p.life -= 0.15f
             if (p.life <= 0) it.remove()
         }
     }
@@ -176,8 +147,6 @@ class MagicTrailView @JvmOverloads constructor(
     private fun resetVFX() {
         paths.clear()
         particles.clear()
-        masterAlpha = 255
-        isDisappearing = false
         invalidate()
     }
 

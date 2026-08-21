@@ -23,6 +23,12 @@ class UniversalMediaService : NotificationListenerService() {
         updateActiveController(sessions)
     }
 
+    private val playbackCallback = object : MediaController.Callback() {
+        override fun onPlaybackStateChanged(state: PlaybackState?) {
+            updatePlaybackStatus()
+        }
+    }
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.d("GestureMusic", "Screen Receiver event: ${intent.action}")
@@ -66,8 +72,19 @@ class UniversalMediaService : NotificationListenerService() {
         }
         
         fun updatePlaybackStatus() {
-            isMusicPlaying = activeController?.playbackState?.state == PlaybackState.STATE_PLAYING
+            val newState = activeController?.playbackState?.state == PlaybackState.STATE_PLAYING
+            if (newState != isMusicPlaying) {
+                Log.d("GestureMusic", "Music status changed: $newState")
+            }
+            isMusicPlaying = newState
         }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        registerReceiver(screenReceiver, filter)
+        updateConfig()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -81,13 +98,6 @@ class UniversalMediaService : NotificationListenerService() {
         val prefs = getSharedPreferences("gestures_prefs", Context.MODE_PRIVATE)
         isMasterEnabled = prefs.getBoolean("master_enabled", true)
         isAutoActivateEnabled = prefs.getBoolean("auto_activate", false)
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        registerReceiver(screenReceiver, filter)
-        updateConfig()
     }
 
     override fun onListenerConnected() {
@@ -111,12 +121,14 @@ class UniversalMediaService : NotificationListenerService() {
     }
 
     private fun updateActiveController(sessions: List<MediaController>?) {
+        activeController?.unregisterCallback(playbackCallback)
         if (sessions.isNullOrEmpty()) {
             activeController = null
         } else {
             // Pick the first one that is playing, or just the first one if none are playing
             activeController = sessions.find { it.playbackState?.state == PlaybackState.STATE_PLAYING }
                 ?: sessions[0]
+            activeController?.registerCallback(playbackCallback)
         }
         updatePlaybackStatus()
     }

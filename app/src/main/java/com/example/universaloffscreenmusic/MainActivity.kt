@@ -1,8 +1,10 @@
 package com.example.universaloffscreenmusic
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +15,8 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -114,7 +118,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnSetup.setOnClickListener {
-            checkAndRequestPermissions()
+            if (areAllPermissionsGranted()) {
+                Toast.makeText(this, "Sense is fully configured and active!", Toast.LENGTH_SHORT).show()
+            } else {
+                checkAndRequestPermissions()
+            }
         }
 
         btnStartSense.setOnClickListener {
@@ -132,9 +140,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUIState(isEnabled: Boolean) {
-        cardMode.alpha = if (isEnabled) 1.0f else 0.5f
         cardAuto.alpha = if (isEnabled) 1.0f else 0.5f
-        cardEdge.alpha = if (isEnabled) 1.0f else 0.5f
         cardGestures.alpha = if (isEnabled) 1.0f else 0.5f
         txtGestureTitle.alpha = if (isEnabled) 1.0f else 0.5f
         
@@ -197,14 +203,15 @@ class MainActivity : AppCompatActivity() {
         val notification = enabledListeners?.contains(componentName) == true
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         val battery = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) powerManager.isIgnoringBatteryOptimizations(packageName) else true
-        return overlay && notification && battery
+        val audio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        return overlay && notification && battery && audio
     }
 
     private fun updatePermissionButton() {
         if (areAllPermissionsGranted()) {
             btnSetup.text = "System Ready \u2713"
             btnSetup.setBackgroundColor(android.graphics.Color.parseColor("#2E7D32")) // Green
-            btnSetup.isEnabled = false
+            btnSetup.isEnabled = true
         } else {
             btnSetup.text = getString(R.string.permissions_btn)
             btnSetup.setBackgroundColor(getColor(R.color.primary))
@@ -219,6 +226,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
             return
         }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1001)
+            return
+        }
+
         val enabledListeners = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
         val componentName = ComponentName(this, UniversalMediaService::class.java).flattenToString()
         if (enabledListeners == null || !enabledListeners.contains(componentName)) {

@@ -12,85 +12,50 @@ class EdgeLightingView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    // VFX Layer 1: Massive Atmospheric Glow
-    private val atmospherePaint = Paint().apply {
-        style = Paint.Style.STROKE
+    private val wavePaint = Paint().apply {
+        style = Paint.Style.FILL
         isAntiAlias = true
-        maskFilter = BlurMaskFilter(60f, BlurMaskFilter.Blur.NORMAL)
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
 
-    // VFX Layer 2: Radiant Bloom
-    private val bloomPaint = Paint().apply {
-        style = Paint.Style.STROKE
-        isAntiAlias = true
-        maskFilter = BlurMaskFilter(25f, BlurMaskFilter.Blur.NORMAL)
-    }
-
-    // VFX Layer 3: Sharp High-Intensity Core
-    private val corePaint = Paint().apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 10f
-        isAntiAlias = true
-    }
-
-    private var rotationOffset = 0f
-    private var breathFactor = 0f
-    private var colors = intArrayOf(Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN, Color.BLUE, Color.MAGENTA, Color.RED)
+    private var time = 0f
+    var amplitude = 0f // Controlled by Visualizer in GestureOverlayService
     
-    private val vfxAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 3000
+    // Modern Siri-style colors
+    private val colorBlue = Color.parseColor("#4A90E2")
+    private val colorCyan = Color.parseColor("#00FFFF")
+    private val colorMagenta = Color.parseColor("#FF00FF")
+    private val colorIndigo = Color.parseColor("#4B0082")
+    private val colorWhite = Color.WHITE
+
+    private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 3000 // Faster rotation for more energy
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {
-            val progress = it.animatedValue as Float
-            rotationOffset = progress * 360f
-            breathFactor = sin(progress * Math.PI.toFloat() * 2f) * 0.5f + 0.5f
+            time = it.animatedValue as Float
             invalidate()
         }
     }
 
     init {
         visibility = GONE
-        setLayerType(LAYER_TYPE_SOFTWARE, null) // Required for BlurMaskFilter
+        // We use hardware acceleration for smooth paths and gradients
+        setLayerType(LAYER_TYPE_HARDWARE, null)
     }
 
     fun setTheme(theme: String) {
-        colors = when (theme) {
-            "RAINBOW" -> intArrayOf(
-                Color.parseColor("#FF0000"), // Intense Red
-                Color.parseColor("#FFEA00"), // Intense Yellow
-                Color.parseColor("#00E676"), // Neon Green
-                Color.parseColor("#00E5FF"), // Neon Cyan
-                Color.parseColor("#2979FF"), // Electric Blue
-                Color.parseColor("#D500F9"), // Vivid Magenta
-                Color.parseColor("#FF0000")
-            )
-            "AURORA" -> intArrayOf(
-                Color.parseColor("#00E5FF"), // Arctic Cyan
-                Color.parseColor("#1DE9B6"), // Spirit Teal
-                Color.parseColor("#00E676"), // Aurora Green
-                Color.parseColor("#651FFF"), // Deep Purple
-                Color.parseColor("#00E5FF")
-            )
-            "FIRE" -> intArrayOf(
-                Color.parseColor("#FF3D00"), // Solar Orange
-                Color.parseColor("#FFEA00"), // Sun Yellow
-                Color.parseColor("#D50000"), // Magma Red
-                Color.parseColor("#FF3D00")
-            )
-            else -> intArrayOf(Color.WHITE, Color.LTGRAY, Color.WHITE)
-        }
         invalidate()
     }
 
     fun startAnimation() {
         visibility = VISIBLE
-        if (!vfxAnimator.isRunning) vfxAnimator.start()
+        if (!animator.isRunning) animator.start()
     }
 
     fun stopAnimation() {
         visibility = GONE
-        vfxAnimator.cancel()
+        animator.cancel()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -99,34 +64,86 @@ class EdgeLightingView @JvmOverloads constructor(
 
         val w = width.toFloat()
         val h = height.toFloat()
+
+        // Layer 1: Indigo/Blue Base
+        drawFullEdgeWave(canvas, colorIndigo, colorBlue, 0.8f, 0.0f, 0.4f, 0.6f)
         
-        // Accurate Bezel Path with high-end rounded corners
-        val radius = 130f
-        val displayPath = Path().apply {
-            addRoundRect(0f, 0f, w, h, radius, radius, Path.Direction.CW)
+        // Layer 2: Magenta/Purple
+        drawFullEdgeWave(canvas, colorMagenta, colorIndigo, 1.1f, 2.0f, 0.5f, 1.0f)
+        
+        // Layer 3: Cyan/Blue Glow
+        drawFullEdgeWave(canvas, colorCyan, colorBlue, 1.4f, 4.0f, 0.6f, 1.3f)
+        
+        // Layer 4: White/Cyan Bright Highlights
+        drawFullEdgeWave(canvas, colorWhite, colorCyan, 1.8f, 1.0f, 0.3f, 1.8f)
+    }
+
+    private fun drawFullEdgeWave(canvas: Canvas, colorStart: Int, colorEnd: Int, speed: Float, phase: Float, alpha: Float, freq: Float) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        
+        val segments = 40
+        val t = (time * speed + phase) * 2f * Math.PI.toFloat()
+        
+        // Base height for the wave, boosted by audio amplitude
+        val baseHeight = 30f + amplitude * 180f 
+        val dynamicFreq = freq + amplitude * 2f
+
+        wavePaint.alpha = (255 * alpha).toInt()
+        
+        // Horizontal Waves
+        drawBorderWave(canvas, w, h, segments, t, dynamicFreq, baseHeight, colorStart, colorEnd, isBottom = true)
+        drawBorderWave(canvas, w, h, segments, t + 1.5f, dynamicFreq, baseHeight, colorStart, colorEnd, isTop = true)
+        
+        // Vertical Waves
+        drawBorderWave(canvas, w, h, segments, t + 0.7f, dynamicFreq, baseHeight, colorStart, colorEnd, isLeft = true)
+        drawBorderWave(canvas, w, h, segments, t + 2.2f, dynamicFreq, baseHeight, colorStart, colorEnd, isRight = true)
+    }
+
+    private fun drawBorderWave(canvas: Canvas, w: Float, h: Float, segments: Int, t: Float, freq: Float, 
+                               baseHeight: Float, colorStart: Int, colorEnd: Int,
+                               isTop: Boolean = false, isBottom: Boolean = false, isLeft: Boolean = false, isRight: Boolean = false) {
+        val path = Path()
+        
+        if (isBottom) {
+            wavePaint.shader = LinearGradient(0f, h - baseHeight, 0f, h, colorStart, colorEnd, Shader.TileMode.CLAMP)
+            path.moveTo(0f, h)
+            for (i in 0..segments) {
+                val x = (i.toFloat() / segments) * w
+                val y = h - (baseHeight * 0.3f) + sin(x * 0.01f * freq + t) * baseHeight
+                path.lineTo(x, y)
+            }
+            path.lineTo(w, h)
+        } else if (isTop) {
+            wavePaint.shader = LinearGradient(0f, 0f, 0f, baseHeight, colorEnd, colorStart, Shader.TileMode.CLAMP)
+            path.moveTo(0f, 0f)
+            for (i in 0..segments) {
+                val x = (i.toFloat() / segments) * w
+                val y = (baseHeight * 0.3f) + sin(x * 0.01f * freq + t) * baseHeight
+                path.lineTo(x, y)
+            }
+            path.lineTo(w, 0f)
+        } else if (isLeft) {
+            wavePaint.shader = LinearGradient(0f, 0f, baseHeight, 0f, colorEnd, colorStart, Shader.TileMode.CLAMP)
+            path.moveTo(0f, 0f)
+            for (i in 0..segments) {
+                val y = (i.toFloat() / segments) * h
+                val x = (baseHeight * 0.3f) + sin(y * 0.01f * freq + t) * baseHeight
+                path.lineTo(x, y)
+            }
+            path.lineTo(0f, h)
+        } else if (isRight) {
+            wavePaint.shader = LinearGradient(w - baseHeight, 0f, w, 0f, colorStart, colorEnd, Shader.TileMode.CLAMP)
+            path.moveTo(w, 0f)
+            for (i in 0..segments) {
+                val y = (i.toFloat() / segments) * h
+                val x = w - (baseHeight * 0.3f) + sin(y * 0.01f * freq + t) * baseHeight
+                path.lineTo(x, y)
+            }
+            path.lineTo(w, h)
         }
-
-        // Liquid Shader Logic
-        val shader = SweepGradient(w / 2f, h / 2f, colors, null)
-        val matrix = Matrix()
-        matrix.postRotate(rotationOffset, w / 2f, h / 2f)
-        shader.setLocalMatrix(matrix)
-
-        // Render Layer 1: Atmospheric Glow (Pulses slightly)
-        atmospherePaint.shader = shader
-        atmospherePaint.strokeWidth = 80f + (20f * breathFactor)
-        atmospherePaint.alpha = (80 + (40 * breathFactor)).toInt()
-        canvas.drawPath(displayPath, atmospherePaint)
-
-        // Render Layer 2: Radiant Bloom
-        bloomPaint.shader = shader
-        bloomPaint.strokeWidth = 35f
-        bloomPaint.alpha = 200
-        canvas.drawPath(displayPath, bloomPaint)
-
-        // Render Layer 3: High-Intensity Core
-        corePaint.shader = shader
-        corePaint.alpha = 255
-        canvas.drawPath(displayPath, corePaint)
+        
+        path.close()
+        canvas.drawPath(path, wavePaint)
     }
 }
