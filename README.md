@@ -58,11 +58,31 @@
 
 ---
 
-## 🚀 3-Step Quick Start
+## 🚀 Quick Start & Installation Guide
 
-1. **Download & Install**: Grab the latest **[Sense.apk](https://github.com/pranavjawale01/universal-music-gestures/raw/refs/heads/main/output/Sense.apk)**.
-2. **Grant Permissions**: Tap the 3 circular status badges at the top-right of the dashboard until all turn 🟢.
-3. **Play Music & Lock**: Start playing music on Spotify / YouTube Music / Apple Music and lock your phone!
+### 1. Download & Install
+Grab the latest **[Sense.apk](https://github.com/pranavjawale01/universal-music-gestures/raw/refs/heads/main/output/Sense.apk)** directly on your Android phone.
+
+> [!TIP]
+> ### 🛡️ If you see "App blocked by Google Play Protect"
+> Android 13/14+ includes a strict sideloading protection shield that blocks manual APK installs for apps requesting notification access (`BIND_NOTIFICATION_LISTENER_SERVICE`, which Sense uses solely for media controls like Spotify / Apple Music / YouTube Music).
+>
+> **To install smoothly:**
+> 1. Open the **Google Play Store** app on your phone.
+> 2. Tap your **Profile icon** (top right) ➔ **Play Protect**.
+> 3. Tap the **Settings (⚙️ gear)** icon in the top right corner.
+> 4. Turn **OFF** **"Scan apps with Play Protect"** (tap *Turn off* when prompted).
+> 5. Return to your **Downloads / File Manager** and tap **Sense.apk** to install.
+> 6. *(Optional)* You can turn Play Protect back ON after installation completes.
+
+### 2. Grant Permissions
+Open Sense and tap the 3 status badges in the top-right corner until all turn 🟢:
+- **Media Access**: Connects to active media playback sessions.
+- **Overlay Access**: Enables gesture capture surface over lockscreen.
+- **Battery Optimization**: Keeps background service alive when phone sleeps.
+
+### 3. Play Music & Lock
+Start playing music on Spotify, YouTube Music, Apple Music, or VLC, then lock your device to use gestures!
 
 ---
 
